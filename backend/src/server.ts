@@ -1,0 +1,23 @@
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { ZodError } from "zod";
+import { router } from "./routes";
+const app=express();
+app.use(helmet());
+app.use(cors({origin:true}));
+app.use(express.json({limit:"100kb"}));
+app.use(rateLimit({windowMs:60_000,max:120}));
+app.get("/health",(_req,res)=>res.json({status:"ok",service:"fincore-api"}));
+app.use("/api",router);
+app.use((err:any,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{
+  if(err instanceof ZodError) return res.status(400).json({error:"Validation failed",details:err.issues.map(i=>({field:i.path.join("."),message:i.message}))});
+  if(err?.message==="INSUFFICIENT_FUNDS") return res.status(400).json({error:"Insufficient wallet balance"});
+  if(err?.code==="P2002") return res.status(409).json({error:"Duplicate resource or idempotency key"});
+  console.error("Request failed:",err?.message || "unknown error");
+  res.status(500).json({error:"Internal server error"});
+});
+const port=Number(process.env.API_PORT||4000);
+app.listen(port,()=>console.log(`FinCore API running on ${port}`));

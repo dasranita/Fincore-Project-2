@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+enum TransferStatus { COMPLETED FAILED }
+enum EntryType { DEBIT CREDIT }
+model User {
+  id           String          @id @default(cuid())
+  name         String
+  email        String          @unique
+  passwordHash String
+  createdAt    DateTime        @default(now())
+  wallets      Wallet[]
+  beneficiaries Beneficiary[]
+}
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   @default("Main Wallet")
+  currency  String   @default("INR")
+  balance   Decimal  @default(0) @db.Decimal(18,2)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  ledger    LedgerEntry[]
+  sent      Transfer[] @relation("Sender")
+  received  Transfer[] @relation("Receiver")
+  @@index([userId])
+}
+model Beneficiary {
+  id             String @id @default(cuid())
+  userId         String
+  beneficiaryWalletId String
+  nickname       String
+  createdAt      DateTime @default(now())
+  user           User @relation(fields: [userId], references: [id])
+  @@unique([userId, beneficiaryWalletId])
+}
+model Transfer {
+  id             String @id @default(cuid())
+  senderWalletId String
+  receiverWalletId String
+  amount         Decimal @db.Decimal(18,2)
+  currency       String
+  description    String?
+  status         TransferStatus @default(COMPLETED)
+  idempotencyKey String
+  createdAt      DateTime @default(now())
+  sender         Wallet @relation("Sender", fields: [senderWalletId], references: [id])
+  receiver       Wallet @relation("Receiver", fields: [receiverWalletId], references: [id])
+  entries        LedgerEntry[]
+  @@unique([senderWalletId, idempotencyKey])
+  @@index([createdAt])
+}
+model LedgerEntry {
+  id         String @id @default(cuid())
+  walletId   String
+  transferId String
+  type       EntryType
+  amount     Decimal @db.Decimal(18,2)
+  currency   String
+  createdAt  DateTime @default(now())
+  wallet     Wallet @relation(fields: [walletId], references: [id])
+  transfer   Transfer @relation(fields: [transferId], references: [id])
+  @@index([walletId, createdAt])
+}
